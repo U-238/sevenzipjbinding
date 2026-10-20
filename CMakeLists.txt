@@ -1,4 +1,4 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.11)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.10)
 PROJECT(SevenZipJBinding)
 
 # Compile on Mac OS https://bug477945.bugzilla.mozilla.org/attachment.cgi?id=376115
@@ -51,8 +51,6 @@ ENDIF(SEVENZIPJBINDING_VERSON)
 
 IF("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin") # TODO Switch to JAVA_SYSTEM
     MESSAGE("---- Mac OS X ----")
-    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -arch ${JAVA_ARCH}")
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -arch ${JAVA_ARCH}")
 ENDIF()
 
 SET(PLATFORM ${JAVA_SYSTEM}-${JAVA_ARCH})
@@ -132,7 +130,7 @@ MACRO(CREATE_COMPILE_JAVA_CUSTOM_COMMAND
         COMMAND ${JAVA_ARCHIVE} cfm "${P_JAR_FILE}" "${P_MANIFEST_MF}" -C "${BIN_DIR}" .
         DEPENDS ${JAVA_SOURCE_FILES_FULL}
         WORKING_DIRECTORY "${P_SRC_DIR}"
-        COMMENT Compiling java ${P_BUILD_NAME}
+        COMMENT "Compiling java ${P_BUILD_NAME}"
         VERBATIM
     )
 ENDMACRO()
@@ -143,7 +141,7 @@ CREATE_COMPILE_JAVA_CUSTOM_COMMAND(core "${JAVA_SOURCE_DIR}" "${SEVENZIPJBINDING
 
 ADD_CUSTOM_TARGET(sevenzipjbinding-jar ALL
                   DEPENDS ${SEVENZIPJBINDING_JAR}
-                  COMMENT Processing java build target)
+                  COMMENT "Processing java build target")
 
 ADD_SUBDIRECTORY(jbinding-cpp)
 
@@ -152,9 +150,6 @@ IF(BUILD_MYSPLIT)
 ENDIF()
 
 ADD_DEPENDENCIES(7-Zip-JBinding sevenzipjbinding-jar)
-
-GET_TARGET_PROPERTY(SEVENZIP_JBINDING_LIB 7-Zip-JBinding LOCATION)
-GET_FILENAME_COMPONENT(SEVENZIP_JBINDING_LIB_FILENAME "${SEVENZIP_JBINDING_LIB}" NAME)
 
 FILE(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/${PLATFORM})
 STRING(RANDOM LENGTH 12 BUILD_REF)
@@ -198,31 +193,33 @@ ADD_CUSTOM_TARGET(sevenzipjbinding-lib-jar ALL
 ADD_DEPENDENCIES(sevenzipjbinding-lib-jar 7-Zip-JBinding) #sevenzipjbinding-jar
 
 SET(LIB_PROPERTY_FILE_CREATOR ${PROJECT_BINARY_DIR}/LibPropertyFileCreator.cmake)
-FILE(WRITE ${LIB_PROPERTY_FILE_CREATOR} "
-    FILE(SHA1 \"${PROJECT_BINARY_DIR}/jbinding-cpp/${SEVENZIP_JBINDING_LIB_FILENAME}\" HASH1)
+SET(LIB_PROPERTY_FILE_CREATOR_CONTENT "
+    FILE(SHA1 \"$<TARGET_FILE:7-Zip-JBinding>\" HASH1)
     FILE(WRITE  \"${SEVENZIPJBINDING_LIB_PROPERTY_FILE}\" \"build.ref=${BUILD_REF}\\n\\n\")
-    FILE(APPEND \"${SEVENZIPJBINDING_LIB_PROPERTY_FILE}\" \"lib.1.name=${SEVENZIP_JBINDING_LIB_FILENAME}\\n\")
+    FILE(APPEND \"${SEVENZIPJBINDING_LIB_PROPERTY_FILE}\" \"lib.1.name=$<TARGET_FILE_NAME:7-Zip-JBinding>\\n\")
     FILE(APPEND \"${SEVENZIPJBINDING_LIB_PROPERTY_FILE}\" \"lib.1.hash=\${HASH1}\\n\")
 ")
 
 IF(RUNTIME_LIB)
-    FILE(APPEND ${LIB_PROPERTY_FILE_CREATOR} "
+    STRING(APPEND LIB_PROPERTY_FILE_CREATOR_CONTENT "
         FILE(SHA1 \"${RUNTIME_LIB_FILENAME}\" HASH2)
         FILE(APPEND \"${SEVENZIPJBINDING_LIB_PROPERTY_FILE}\" \"lib.2.name=${RUNTIME_LIB}\\n\")
         FILE(APPEND \"${SEVENZIPJBINDING_LIB_PROPERTY_FILE}\" \"lib.2.hash=\${HASH2}\\n\")
     ")
 ENDIF(RUNTIME_LIB)
+FILE(GENERATE OUTPUT ${LIB_PROPERTY_FILE_CREATOR}
+              CONTENT "${LIB_PROPERTY_FILE_CREATOR_CONTENT}")
 
 
 ADD_CUSTOM_COMMAND(OUTPUT ${SEVENZIPJBINDING_LIB_PROPERTY_FILE}
                    COMMAND ${CMAKE_COMMAND} -P ${LIB_PROPERTY_FILE_CREATOR}
-                   DEPENDS ${SEVENZIP_JBINDING_LIB}
+                   DEPENDS 7-Zip-JBinding
                    WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-                   COMMENT Calculating hash of the native libraries)
+                   COMMENT "Calculating hash of the native libraries")
 
 ADD_CUSTOM_COMMAND(OUTPUT ${SEVENZIPJBINDING_LIB_JAR}
                    COMMAND ${CMAKE_COMMAND} -E copy
-                                           ${PROJECT_BINARY_DIR}/jbinding-cpp/${SEVENZIP_JBINDING_LIB_FILENAME}
+                                           $<TARGET_FILE:7-Zip-JBinding>
                                            ${PLATFORM}
                    COMMAND ${JAVA_ARCHIVE} cfm "${SEVENZIPJBINDING_LIB_JAR}" "${SEVENZIPJBINDING_LIB_MANIFEST}"
                                            -C ${PROJECT_BINARY_DIR}
@@ -232,7 +229,7 @@ ADD_CUSTOM_COMMAND(OUTPUT ${SEVENZIPJBINDING_LIB_JAR}
                                            ${SEVENZIPJBINDING_PLATFORMS_PROPERTY_FILE}
                    DEPENDS ${SEVENZIPJBINDING_LIB_PROPERTY_FILE}
                    WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-                   COMMENT Building Platformdependend jar)
+                   COMMENT "Building platform-dependent jar")
 
 IF(RUNTIME_LIB)
     ADD_CUSTOM_COMMAND(TARGET sevenzipjbinding-lib-jar POST_BUILD
@@ -243,7 +240,7 @@ IF(RUNTIME_LIB)
                                                -C ${PROJECT_BINARY_DIR}
                                                ${PLATFORM}/${MINGW_RUNTIME_DLL_NAME}
                    WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-                   COMMENT Adding MinGW runtime dll to the jar)
+                   COMMENT "Adding MinGW runtime dll to the jar")
 ENDIF()
 
 
@@ -373,7 +370,8 @@ IF(BUILD_TESTING)
 
     ADD_CUSTOM_TARGET(sevenzipjbinding-test-jar ALL
                       DEPENDS ${TESTS_JAR}
-                      COMMENT Processing java build target)
+                      COMMENT "Processing java build target")
+    ADD_DEPENDENCIES(sevenzipjbinding-test-jar sevenzipjbinding-jar)
 
 
     SET(JUNIT_TEST_RUNNER ${PROJECT_BINARY_DIR}/JUnitRunner.cmake)
@@ -423,4 +421,3 @@ IF(BUILD_TESTING)
     add_test(JUnit-badarchive                   ${CMAKE_COMMAND} -D "SINGLEBUNDLE=Bad archive tests" -P ${JUNIT_TEST_RUNNER})
 #                                         org.junit.runner.JUnitCore net.sf.sevenzipjbinding.junit.AllTestSuite) JUnitInitializationTest
 ENDIF(BUILD_TESTING)
-
